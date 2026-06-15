@@ -19,10 +19,17 @@
       reference = "ghcr.io/example/test:latest";
       sha256 = "0000000000000000000000000000000000000000000000000000";
     };
+    # 2. ut4-base evaluates with the expected name and passthru.
+    ut4Base = import ../pkgs/ut4-base.nix {
+      inherit pkgs;
+      inherit fetchOras;
+    };
   in
   assert fetchOrasResult.outputHash == "0000000000000000000000000000000000000000000000000000";
   # Nix sanitizes colons in derivation names to hyphens.
   assert fetchOrasResult.name == "fetchOras-test-latest";
+  assert ut4Base.name == "ut4-base-xan-3525360";
+  assert ut4Base.passthru.build == "xan-3525360";
   "ok"
 )
 { }
