@@ -74,6 +74,8 @@
           type = "app";
           program = "${ut4Client}/bin/ut4";
         };
+
+        checks.vm-hub = import ./tests/vm-hub.nix { inherit pkgs; };
       }
     )
     // {
