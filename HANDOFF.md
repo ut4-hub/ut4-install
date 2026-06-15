@@ -100,8 +100,16 @@ wrapper at the join's own output path. Same fix applied in `ut4-client-no-uu`.
 - Confirm `master-ut4.timiimit.com` as the default master server (currently
   hardcoded in `flake.nix`). Anyone wanting their own master server can
   override via the module option or by overlaying the launcher derivation.
-- Phase B (self-hosting UT4MasterServer + Cloudflare tunnel) is a separate
-  spec — not started.
+- **Phase B scope** (separate spec, not started). Per 2026-06-15: includes
+  - `master-prod`: self-hosted UT4MasterServer tracking `main`
+  - `master-dev`: self-hosted UT4MasterServer tracking a branch/release tag
+  - smoke tests against both (register / log in / register a hub / run a match)
+  - `hub-against-timiimit`: deploy the `services.ut4Hub` module against
+    timiimit's existing `master-ut4.timiimit.com` (proves the hub module
+    end-to-end without depending on our own master being up first)
+  Needs its own brainstorm on: hosting target (NixOS module vs Docker on a
+  remote box vs deploy-rs to a fresh host), Cloudflare-tunnel topology, MongoDB
+  state management, certificate strategy, dev/prod promotion workflow.
 
 ## References
 
