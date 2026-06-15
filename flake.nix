@@ -80,6 +80,7 @@
     )
     // {
       nixosModules.ut4Hub = import ./modules/ut4-hub-server.nix;
+      nixosModules.ut4MasterServer = import ./modules/ut4-master-server.nix;
 
       overlays.default = final: prev: {
         ut4-hub = {

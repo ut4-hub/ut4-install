@@ -1,0 +1,90 @@
+name: Build master server images
+
+# Builds UT4MasterServer's API and Web images from timiimit's upstream source
+# and pushes them to ghcr.io/ut4-hub/master-server-{api,web}. The
+# services.ut4MasterServer NixOS module consumes these.
+#
+# Two trigger modes:
+#   - workflow_dispatch: ref input (branch or tag) → tags image as <ref>
+#   - push of tag matching 'ms-v*': uses the part after 'ms-' as the upstream
+#     ref AND the image tag (e.g. ms-v0.3.0 builds upstream main commit but
+#     tags the image v0.3.0)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Upstream git ref (branch, tag, or sha) to build from"
+        type: string
+        default: master
+      tag:
+        description: "Image tag to publish (e.g. main, v0.3.0)"
+        type: string
+        default: main
+  push:
+    tags:
+      - 'ms-v*'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve ref and tag
+        id: refs
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "ref=${{ github.event.inputs.ref }}" >> "$GITHUB_OUTPUT"
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            # Tag was ms-v0.3.0 → image_tag=v0.3.0, upstream ref=master
+            image_tag="${GITHUB_REF_NAME#ms-}"
+            echo "ref=master" >> "$GITHUB_OUTPUT"
+            echo "tag=$image_tag" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout upstream UT4MasterServer
+        uses: actions/checkout@v4
+        with:
+          repository: timiimit/UT4MasterServer
+          ref: ${{ steps.refs.outputs.ref }}
+          path: upstream
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: upstream
+          file: upstream/UT4MasterServer/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/ut4-hub/master-server-api:${{ steps.refs.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/timiimit/UT4MasterServer
+            org.opencontainers.image.description=UT4MasterServer API (built from ${{ steps.refs.outputs.ref }})
+            io.ut4-hub.upstream.ref=${{ steps.refs.outputs.ref }}
+
+      - name: Build & push Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: upstream/UT4MasterServer.Web
+          file: upstream/UT4MasterServer.Web/.docker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/ut4-hub/master-server-web:${{ steps.refs.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/timiimit/UT4MasterServer
+            org.opencontainers.image.description=UT4MasterServer Web UI (built from ${{ steps.refs.outputs.ref }})
+            io.ut4-hub.upstream.ref=${{ steps.refs.outputs.ref }}
