@@ -25,7 +25,7 @@ pkgs.testers.nixosTest {
         package = pkgs.runCommand "fake-ut4-server" { } ''
           mkdir -p $out/bin
           cat > $out/bin/ut4-server <<'EOF'
-          #!/usr/bin/env bash
+          #!/bin/sh
           echo "fake ut4-server starting; args: $*"
           sleep 3600
           EOF
