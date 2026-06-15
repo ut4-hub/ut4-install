@@ -69,9 +69,9 @@ wrapper at the join's own output path. Same fix applied in `ut4-client-no-uu`.
 
 3. **Create the GitHub repo and push:**
    ```bash
-   gh repo create ut4-hub/ut4-hub --public \
+   gh repo create ut4-hub/ut4-install --public \
      --description "NixOS flake for Unreal Tournament 4 pre-alpha (Linux, XAN-3525360)"
-   git remote add origin git@github.com:ut4-hub/ut4-hub.git
+   git remote add origin git@github.com:ut4-hub/ut4-install.git
    git push -u origin main
    ```
 

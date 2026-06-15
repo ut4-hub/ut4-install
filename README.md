@@ -8,7 +8,7 @@ defaults to [master-ut4.timiimit.com](https://ut4.timiimit.com).
 ## Quickstart
 
 ```bash
-nix run github:ut4-hub/ut4-hub
+nix run github:ut4-hub/ut4-install
 ```
 
 That's it. The first run downloads ~11 GB (extracted to ~22 GB) into your Nix
@@ -20,14 +20,14 @@ nix-command flakes` in your Nix config.
 ### Try once (ad-hoc)
 
 ```bash
-nix run github:ut4-hub/ut4-hub
+nix run github:ut4-hub/ut4-install
 ```
 
 ### Persistent install via home-manager
 
 ```nix
 # flake.nix
-inputs.ut4-hub.url = "github:ut4-hub/ut4-hub";
+inputs.ut4-hub.url = "github:ut4-hub/ut4-install";
 
 # home.nix
 { inputs, pkgs, ... }: {
@@ -42,7 +42,7 @@ inputs.ut4-hub.url = "github:ut4-hub/ut4-hub";
 
 ```nix
 # flake.nix
-inputs.ut4-hub.url = "github:ut4-hub/ut4-hub";
+inputs.ut4-hub.url = "github:ut4-hub/ut4-install";
 
 # configuration.nix
 { inputs, config, pkgs, ... }: {
@@ -100,7 +100,7 @@ under our license.
 
 Already patched in `ut4-base` via `patchelf --clear-execstack`. If you see it
 anyway, your `ut4-base` build is stale — `nix store gc && nix run
-github:ut4-hub/ut4-hub` to rebuild from the latest input.
+github:ut4-hub/ut4-install` to rebuild from the latest input.
 
 ### Hyprland: clicks don't reach the game window
 

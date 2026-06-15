@@ -51,7 +51,7 @@ echo "→ Pushing artifact ${REGISTRY}:${TAG}..."
 pushd "${work}/chunks" >/dev/null
 oras push "${REGISTRY}:${TAG}" \
   --artifact-type "application/vnd.ut4-hub.client+zip" \
-  --annotation "org.opencontainers.image.source=https://github.com/ut4-hub/ut4-hub" \
+  --annotation "org.opencontainers.image.source=https://github.com/ut4-hub/ut4-install" \
   --annotation "io.ut4-hub.upstream.url=${UPSTREAM_URL}" \
   --annotation "io.ut4-hub.upstream.sha256=${EXPECTED_SHA256}" \
   --annotation "io.ut4-hub.upstream.fetched-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
