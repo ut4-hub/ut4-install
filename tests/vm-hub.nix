@@ -9,7 +9,7 @@
     config.allowUnfree = true;
   },
 }:
-pkgs.nixosTest {
+pkgs.testers.nixosTest {
   name = "ut4-hub-server";
 
   nodes.machine =
