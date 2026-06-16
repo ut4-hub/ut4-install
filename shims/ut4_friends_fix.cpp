@@ -58,7 +58,22 @@ static AddViewportWidgetContent_t s_AddViewportWidgetContent = nullptr;
 static GetGameInstance_t s_GetGameInstance = nullptr;
 static GetGameViewportClient_t s_GetGameViewportClient = nullptr;
 
+// Time gate — the popup work is unsafe to fire during engine init (some
+// code path calls ToggleFriendsAndChat from LoginStatusChanged or similar
+// before the viewport / menu are fully constructed). Skip the popup work
+// until enough time has elapsed since the shim loaded.
+static std::chrono::steady_clock::time_point s_shim_loaded_at;
+static constexpr int kSettleSeconds = 15;
+
 static bool s_logged_once = false;
+
+// FReply::Handled() byte pattern (matches the stripped Linux stub).
+static void stamp_handled(FReply* ret)
+{
+    std::memset(ret, 0, sizeof(*ret));
+    ret->raw[0] = 1;
+    *reinterpret_cast<uint32_t*>(&ret->raw[0xa0]) = 0x702;
+}
 
 // Replacement that the vtable slot will point to.
 extern "C" FReply* ut4_friends_fix_Toggle(FReply* ret, void* self)
@@ -68,44 +83,48 @@ extern "C" FReply* ut4_friends_fix_Toggle(FReply* ret, void* self)
         fprintf(stderr, "[ut4-friends-fix] ToggleFriendsAndChat fired self=%p\n", self);
     }
 
-    if (s_GetFriendsPopup && self) {
-        TSharedPtr popup{};
-        s_GetFriendsPopup(&popup, self);
-
-        // Stamp FReply::Handled() bytes.
-        std::memset(ret, 0, sizeof(*ret));
-        ret->raw[0] = 1;
-        *reinterpret_cast<uint32_t*>(&ret->raw[0xa0]) = 0x702;
-
-        if (s_SetShowingFriendsPopup) {
-            s_SetShowingFriendsPopup(self, true);
-        }
-
-        // Add the popup widget to the viewport so it actually renders.
-        // Chain: ULocalPlayer::GetGameInstance() → UGameInstance::GetGameViewportClient()
-        if (s_GetGameInstance && s_GetGameViewportClient && s_AddViewportWidgetContent && popup.p) {
-            void* gi = s_GetGameInstance(self);
-            if (gi) {
-                void* vp = s_GetGameViewportClient(gi);
-                if (vp) {
-                    static bool added_once = false;
-                    if (!added_once) {
-                        added_once = true;
-                        fprintf(stderr, "[ut4-friends-fix] adding popup widget to viewport vp=%p popup=%p\n",
-                            vp, popup.p);
-                    }
-                    s_AddViewportWidgetContent(vp, popup, 200);
-                }
-            }
-        }
-
+    // Time gate — early calls (during engine init / login status churn)
+    // crash if we try to mount the popup widget. Mimic the stub for the
+    // first kSettleSeconds, then let real user clicks through.
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now() - s_shim_loaded_at).count();
+    if (elapsed < kSettleSeconds) {
+        stamp_handled(ret);
         return ret;
     }
 
-    // fall back to the stub behaviour
-    std::memset(ret, 0, sizeof(*ret));
-    ret->raw[0] = 1;
-    *reinterpret_cast<uint32_t*>(&ret->raw[0xa0]) = 0x702;
+    if (!s_GetFriendsPopup || !self) {
+        stamp_handled(ret);
+        return ret;
+    }
+
+    TSharedPtr popup{};
+    s_GetFriendsPopup(&popup, self);
+
+    stamp_handled(ret);
+
+    if (s_SetShowingFriendsPopup) {
+        s_SetShowingFriendsPopup(self, true);
+    }
+
+    // Add the popup widget to the viewport so it actually renders.
+    // Chain: ULocalPlayer::GetGameInstance() → UGameInstance::GetGameViewportClient()
+    if (s_GetGameInstance && s_GetGameViewportClient && s_AddViewportWidgetContent && popup.p && popup.sr) {
+        void* gi = s_GetGameInstance(self);
+        if (gi) {
+            void* vp = s_GetGameViewportClient(gi);
+            if (vp) {
+                static bool added_once = false;
+                if (!added_once) {
+                    added_once = true;
+                    fprintf(stderr, "[ut4-friends-fix] adding popup widget to viewport vp=%p popup=%p sr=%p (elapsed=%lds)\n",
+                        vp, popup.p, popup.sr, (long)elapsed);
+                }
+                s_AddViewportWidgetContent(vp, popup, 200);
+            }
+        }
+    }
+
     return ret;
 }
 
@@ -207,6 +226,7 @@ static void watcher_thread()
 __attribute__((constructor))
 static void ut4_friends_fix_init()
 {
+    s_shim_loaded_at = std::chrono::steady_clock::now();
     fprintf(stderr, "[ut4-friends-fix] loaded; starting watcher\n");
     // Detached thread polls for UT4 .so load
     std::thread(watcher_thread).detach();

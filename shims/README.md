@@ -5,45 +5,64 @@ Linux client at load time without modifying the on-disk binary.
 
 ## libut4_friends_fix.so
 
-**Status: WIP — works partially, causes delayed segfault.**
+**Status: WIP — fires correctly, still causes a delayed segfault on the
+real click path.**
 
 Re-enables the in-game friends popup on the Linux UT4 client, which
 ships with `UUTLocalPlayer::ToggleFriendsAndChat` compiled to a 70-byte
 stub on Linux (`#if PLATFORM_LINUX return FReply::Handled();` at
 `UTLocalPlayer.cpp:6254`).
 
-### What it does
+### Architecture
 
-1. Constructor spawns a watcher thread (because the UT4 .so is loaded by
-   UE4's module subsystem _after_ main, so the constructor can't see it
-   yet).
-2. Watcher polls `dl_iterate_phdr` until `libUE4-UnrealTournament-Linux-Shipping.so`
-   is loaded, then:
-   - Resolves symbols (`GetFriendsPopup`, `SetShowingFriendsPopup`,
+1. Constructor records load time + spawns a watcher thread (because
+   the UT4 .so is loaded by UE4's module subsystem *after* main, so
+   the constructor can't see it yet).
+2. Watcher polls `dl_iterate_phdr` until
+   `libUE4-UnrealTournament-Linux-Shipping.so` is loaded, then:
+   - dlopens it with `RTLD_NOLOAD|RTLD_LAZY` to get a handle
+   - resolves 5 symbols (`GetFriendsPopup`, `SetShowingFriendsPopup`,
      `AddViewportWidgetContent`, `GetGameInstance`, `GetGameViewportClient`)
-     via `dlopen(..., RTLD_NOLOAD)` + `dlsym`.
-   - Computes the vtable slot for `UUTLocalPlayer::ToggleFriendsAndChat`
-     at `load_base + 0x225b010 + 0x7f0`. (`+0x7f0`, NOT `+0x7e0` as one
-     earlier analysis said — that slot is `PrevTutorial`.)
-   - `mprotect` + writes the slot to point at our replacement.
-3. Replacement constructs the friends popup, sets `bShowingFriendsMenu`,
-   adds the widget to the viewport.
+   - computes the vtable slot at `load_base + 0x225b010 + 0x7f0`
+     (verified via `readelf -r` — slot +0x7e0 is `PrevTutorial`, NOT
+     `ToggleFriendsAndChat`)
+   - mprotect + writes the slot to point at our replacement
+3. Replacement is gated by a **15-second settle window**: early calls
+   (LoginStatusChanged etc.) get a no-op `FReply::Handled()` like the
+   original stub. After settle, real user clicks go through the popup
+   construction path.
 
-### Where it breaks today
+### Current failure mode
 
-The chain `GetFriendsPopup → SetShowingFriendsPopup → AddViewportWidgetContent`
-returns successfully (no immediate crash), but the engine segfaults seconds
-later — likely because we're passing the popup `TSharedPtr` to a function
-that expects `TSharedRef`, and the ref-controller doesn't satisfy the
-non-null invariant. The compiled `AddViewportWidgetContent` signature
-takes a `TSharedRef<SWidget>` by value (16 bytes, passed in two regs);
-our `TSharedPtr` from `GetFriendsPopup` may have a null ref controller.
+After settle, the chain `GetFriendsPopup → SetShowingFriendsPopup →
+AddViewportWidgetContent` succeeds (widget gets added, no immediate
+crash). The engine then crashes ~15 seconds later with `Signal=11`,
+likely during the widget's first tick or render.
 
-To fix:
-- Track the exact ABI of `TSharedRef` vs `TSharedPtr` and either upgrade
-  the `TSharedPtr` to a `TSharedRef` manually, or call a different
-  symbol that takes a `TSharedPtr`.
-- Verify the viewport pointer is valid at click time (not yet validated).
+Looking at the source path the shipping client compiled out:
+```cpp
+FriendsMenu = GetFriendsPopup();
+GEngine->GameViewport->AddViewportWidgetContent(
+    SNew(SOverlay) + SOverlay::Slot() [ FriendsMenu.ToSharedRef() ],
+    200);
+```
+
+We're skipping the `SNew(SOverlay) + SOverlay::Slot() [...]` wrapping
+and passing the raw popup TSharedPtr directly. The unwrapped widget
+can't be ticked/rendered safely inside the viewport overlay, leading
+to the delayed crash.
+
+### Open work to ship this
+
+Implement the SOverlay wrap. Either:
+- Construct `SOverlay` + `SOverlay::FSlot` via Slate's `SNew` macros at
+  runtime (requires linking against UE4's Slate symbols correctly), or
+- Find an existing UE4 helper that takes a single TSharedRef<SWidget>
+  and wraps it for AddViewportWidgetContent (none spotted yet)
+- Skip the AddViewportWidgetContent call entirely and try to use a
+  different existing UE4 path (e.g. `OpenDialog`-style) — but the
+  popup is not a `SUTDialogBase` so the existing dialog helpers don't
+  apply
 
 ### Build
 
@@ -54,21 +73,22 @@ nix-shell -p gcc --run "g++ -shared -fPIC -O2 -pthread \
 
 ### Use
 
-Edit `/home/lucas/Games/UT4/launch.sh`, uncomment:
-
-```
-LD_PRELOAD=/home/lucas/Games/UT4-shims/libut4_friends_fix.so \
-```
+Edit `/home/lucas/Games/UT4/launch.sh`, uncomment the LD_PRELOAD line.
+**Warning**: game will run normally for ~15s after a friends-button
+click then segfault.
 
 ### What's verified
 
 - Vtable address resolution: ✅ (verified via `readelf -r` for symbol
-  `_ZN14UUTLocalPlayer20ToggleFriendsAndChatEv` reloc at `0x225b800`)
-- Symbol resolution: ✅ (all 5 helpers resolved)
+  `_ZN14UUTLocalPlayer20ToggleFriendsAndChatEv` reloc at `0x225b800`,
+  slot offset `+0x7f0`)
+- Symbol resolution: ✅ (all 5 helpers resolved via dlopen+dlsym)
 - Vtable mprotect + write: ✅
-- Replacement fires on click: ✅ (`ToggleFriendsAndChat fired self=...`
-  visible in client log)
-- Widget actually renders: ❌ (crash)
+- 15s settle window prevents init crashes: ✅
+- Replacement fires on real user click after settle: ✅
+  (`ToggleFriendsAndChat fired ... (elapsed=20s)`)
+- Widget added to viewport: ✅ (no immediate failure)
+- Widget actually renders without crashing engine: ❌
 
 ### Reference
 
