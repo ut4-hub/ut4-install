@@ -77,7 +77,12 @@ writeShellApplication {
     fi
 
     cd "''${GAME}"
+    # libstrophe (UE4 XMPP client) calls SSL_CTX_load_verify_locations with
+    # NULL paths and falls back to OpenSSL defaults. Force a known-good CA
+    # bundle so we don't get "tls error: SSL_CTX_load_verify_locations()
+    # failed" on every XMPP connect.
     SDL_VIDEODRIVER=x11 \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt \
     LD_LIBRARY_PATH="''${ENGINE_LIB}:''${EXTRA_LD}:''${LD_LIBRARY_PATH:-}" \
     exec "''${nvidia_env[@]}" ${steam-run}/bin/steam-run \
       ./Engine/Binaries/Linux/UE4-Linux-Shipping \
