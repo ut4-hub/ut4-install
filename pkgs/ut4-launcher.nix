@@ -60,10 +60,26 @@ writeShellApplication {
     ENGINE_LIB="''${GAME}/Engine/Binaries/Linux"
     EXTRA_LD="${nss}/lib:${nspr}/lib:${gconf}/lib:${libxscrnsaver}/lib"
 
+    # On hybrid-GPU laptops (NVIDIA Optimus / PRIME) the iGPU's OpenGL stack
+    # rejects -opengl4 with shader compile failures. Detect NVIDIA at runtime
+    # and route UE4 onto the discrete GPU.
+    nvidia_env=()
+    if [[ -e /proc/driver/nvidia ]]; then
+      nvidia_env=(
+        env
+        __NV_PRIME_RENDER_OFFLOAD=1
+        __GLX_VENDOR_LIBRARY_NAME=nvidia
+        __VK_LAYER_NV_optimus=NVIDIA_only
+        __GL_SYNC_TO_VBLANK=1
+        vblank_mode=3
+        mesa_glthread=false
+      )
+    fi
+
     cd "''${GAME}"
     SDL_VIDEODRIVER=x11 \
     LD_LIBRARY_PATH="''${ENGINE_LIB}:''${EXTRA_LD}:''${LD_LIBRARY_PATH:-}" \
-    exec ${steam-run}/bin/steam-run \
+    exec "''${nvidia_env[@]}" ${steam-run}/bin/steam-run \
       ./Engine/Binaries/Linux/UE4-Linux-Shipping \
       UnrealTournament -SaveToUserDir -opengl4 \
       -epicapp=UnrealTournamentDev -epicenv=Prod -EpicPortal "$@"
