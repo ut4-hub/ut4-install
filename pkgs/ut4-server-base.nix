@@ -13,9 +13,10 @@ let
     lib
     fetchurl
     unzip
-    patchelf
     coreutils
     ;
+  # `--clear-execstack` was added in patchelf 0.18 (nixpkgs default is 0.15).
+  patchelf = pkgs.patchelfUnstable;
 
   build = "xan-3525360";
   upstreamUrl =

@@ -119,6 +119,29 @@ config separately.
 If you're using `ut4-client-no-uu`, the `Engine.ini` redirect handles it
 directly and you log in with credentials in the dialog.
 
+### Black ground, torn lines, missing geometry (hybrid GPU laptops)
+
+On laptops with both an integrated and discrete GPU (Framework AMD + NVIDIA
+hybrid, Optimus, AMD APU + dGPU, etc.), the default `launch.sh` may run UT4 on
+the iGPU, which can produce horizontal tearing lines and patches of unrendered
+ground. Force the discrete GPU and try the OpenGL3 RHI:
+
+```sh
+# add to launch.sh before the exec line
+__NV_PRIME_RENDER_OFFLOAD=1
+__GLX_VENDOR_LIBRARY_NAME=nvidia       # NVIDIA dGPU
+__VK_LAYER_NV_optimus=NVIDIA_only
+__GL_SYNC_TO_VBLANK=1
+vblank_mode=3
+mesa_glthread=false
+
+# and pass -opengl3 instead of -opengl4
+```
+
+Verify the GPU UT4 actually picked by tailing the log for `LogRHI: GL_RENDERER:`.
+For AMD-only dGPU systems, drop the `__NV_*`/`__GLX_*` vars and instead use
+`DRI_PRIME=1` to select the discrete adapter.
+
 ### "I really don't have my Engine.ini under ~/Documents/..."
 
 The launcher seeds it on first run *only if it doesn't already exist*. If you
